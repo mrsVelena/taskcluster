@@ -224,7 +224,7 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{util, Credentials};
+    use crate::{credentials::Certificate, util, Credentials};
     use chrono;
     use mockito::{mock, server_url, Matcher};
     use serde::{Deserialize, Serialize};
@@ -260,7 +260,7 @@ mod tests {
             )
             .unwrap();
 
-        let mut cert = temp_creds.certificate().unwrap();
+        let mut cert: Certificate = serde_json::from_str(&temp_creds.certificate.unwrap()).unwrap();
         cert.seed = tc.seed.clone();
         temp_creds.access_token =
             util::gen_temp_access_token(&tc.perm_creds.access_token, &cert.seed);

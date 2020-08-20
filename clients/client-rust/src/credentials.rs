@@ -45,7 +45,7 @@ fn parse_certificate<'a, D: Deserializer<'a>>(d: D) -> Result<Option<String>, D:
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
-pub struct Certificate {
+pub(crate) struct Certificate {
     pub version: u32,
     pub scopes: Option<Vec<String>>,
     pub start: i64,
@@ -195,13 +195,6 @@ impl Credentials {
         scopes: Option<impl IntoIterator<Item = impl AsRef<str>>>,
     ) -> Result<Credentials, Error> {
         self.create_named_temp_creds("", duration, scopes)
-    }
-
-    pub fn certificate(&self) -> Option<Certificate> {
-        match self.certificate {
-            Some(ref cert) => Some(serde_json::from_str(cert).unwrap()),
-            None => None,
-        }
     }
 }
 
