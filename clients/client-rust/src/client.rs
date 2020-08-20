@@ -1,4 +1,3 @@
-use crate::slugid;
 use async_std::task;
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
@@ -12,6 +11,7 @@ use reqwest;
 use reqwest::header::HeaderValue;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json;
+use slugid;
 use std::borrow::Borrow;
 use std::env;
 use std::iter::{FromIterator, IntoIterator, Iterator};

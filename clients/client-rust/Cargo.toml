@@ -6,7 +6,6 @@ edition = "2018"
 
 [dependencies]
 reqwest = { version = "0.10.4", features = ["json"] }
-uuid = { version = "0.8.1", features = ["v4"] }
 serde = { version = "1.0.104", features = ["derive"] }
 serde_json = "1.0.48"
 rust-crypto = "0.2.36"
@@ -16,6 +15,7 @@ failure = "0.1.7"
 hawk = "3.1.0"
 backoff = "0.1.6"
 async-std = "1.1.0"
+slugid = "1.0.0"
 
 [dev-dependencies]
 mockito = "0.23.3"
