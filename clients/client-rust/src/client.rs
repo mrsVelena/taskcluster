@@ -11,24 +11,21 @@ use std::iter::IntoIterator;
 use std::str::FromStr;
 use std::time::Duration;
 
-#[allow(non_upper_case_globals)]
-pub(crate) const NoScopes: Option<Vec<String>> = None;
+/// A shortcut for None to indicate no body is being supplied for a request.
+pub const NO_BODY: Option<&str> = None;
 
-#[allow(non_upper_case_globals)]
-pub(crate) const NoBody: Option<&str> = None;
-
-#[allow(non_upper_case_globals)]
-pub(crate) const NoQuery: Option<Vec<(String, String)>> = None;
+/// A shortcut for None to indicate that no query is being supplied for a request
+pub const NO_QUERY: Option<Vec<(String, String)>> = None;
 
 /// Client is the entry point into all the functionality in this package. It
 /// contains authentication credentials, and a service endpoint, which are
 /// required for all HTTP operations.
 #[derive(Debug, Clone)]
-pub(crate) struct Client {
+pub struct Client {
     /// The credentials associated with this client. If authenticated request is made if None
     pub credentials: Option<Credentials>,
     /// The request URL
-    pub url: reqwest::Url,
+    url: reqwest::Url,
     /// Request client
     client: reqwest::Client,
 }
@@ -234,7 +231,7 @@ mod tests {
         let server = server_url();
 
         let client = Client::new(&server, "queue", "v1", None)?;
-        let resp = client.request("GET", "ping", NoQuery, NoBody).await?;
+        let resp = client.request("GET", "ping", NO_QUERY, NO_BODY).await?;
         assert!(resp.status().is_success());
         Ok(())
     }
@@ -254,7 +251,7 @@ mod tests {
                 "GET",
                 "test",
                 Some(&[("taskcluster", "test"), ("client", "rust")]),
-                NoBody,
+                NO_BODY,
             )
             .await?;
         assert!(resp.status().is_success());
@@ -272,7 +269,7 @@ mod tests {
         let server = server_url();
 
         let client = Client::new(&server, "queue", "v1", None)?;
-        let resp = client.request("POST", "test", NoQuery, Some(body)).await?;
+        let resp = client.request("POST", "test", NO_QUERY, Some(body)).await?;
         assert!(resp.status().is_success());
         Ok(())
     }
