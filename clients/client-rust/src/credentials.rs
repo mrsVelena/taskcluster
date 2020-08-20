@@ -1,4 +1,3 @@
-use crate::util;
 use crypto::hmac::Hmac;
 use crypto::mac::Mac;
 use crypto::sha2::Sha256;
@@ -55,6 +54,12 @@ pub(crate) struct Certificate {
     #[serde(skip_serializing_if = "String::is_empty")]
     #[serde(default)]
     pub issuer: String,
+}
+
+fn gen_temp_access_token(perm_access_token: &str, seed: &str) -> String {
+    let mut hash = Hmac::new(Sha256::new(), perm_access_token.as_bytes());
+    hash.input(seed.as_bytes());
+    base64::encode_config(hash.result().code(), base64::URL_SAFE_NO_PAD)
 }
 
 fn collect_scopes<R: FromIterator<String>>(
@@ -173,7 +178,7 @@ impl Credentials {
 
         cert.sign(&self.access_token, &temp_client_id);
 
-        let temp_access_token = util::gen_temp_access_token(&self.access_token, &cert.seed);
+        let temp_access_token = gen_temp_access_token(&self.access_token, &cert.seed);
 
         Ok(Credentials {
             client_id: if temp_client_id == "" {
@@ -223,5 +228,63 @@ impl Certificate {
         let mut hash = Hmac::new(Sha256::new(), access_token.as_bytes());
         hash.input(lines.join("\n").as_bytes());
         self.signature = base64::encode(hash.result().code());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono;
+    use serde::{Deserialize, Serialize};
+    use std::fs;
+    use std::path;
+    use std::time;
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct TempCredsTestCase {
+        pub description: String,
+        pub perm_creds: Credentials,
+        pub seed: String,
+        pub start: String,
+        pub expiry: String,
+        pub temp_creds_name: String,
+        pub temp_creds_scopes: Vec<String>,
+        pub expected_temp_creds: Credentials,
+    }
+
+    fn test_cred(tc: &TempCredsTestCase) {
+        let start = chrono::DateTime::parse_from_rfc3339(&tc.start).unwrap();
+        let expiry = chrono::DateTime::parse_from_rfc3339(&tc.expiry).unwrap();
+
+        let mut temp_creds = tc
+            .perm_creds
+            .create_named_temp_creds(
+                &tc.temp_creds_name,
+                time::Duration::from_secs(3600),
+                Some(tc.temp_creds_scopes.clone()),
+            )
+            .unwrap();
+
+        let mut cert: Certificate = serde_json::from_str(&temp_creds.certificate.unwrap()).unwrap();
+        cert.seed = tc.seed.clone();
+        temp_creds.access_token = gen_temp_access_token(&tc.perm_creds.access_token, &cert.seed);
+        cert.start = start.timestamp_millis();
+        cert.expiry = expiry.timestamp_millis();
+        cert.sign(&tc.perm_creds.access_token, &temp_creds.client_id);
+        temp_creds.certificate = Some(serde_json::to_string(&cert).unwrap());
+        assert_eq!(temp_creds, tc.expected_temp_creds);
+    }
+
+    #[test]
+    fn test_static_temp_creds() {
+        let mut test_case_path = path::PathBuf::from(file!()).parent().unwrap().to_path_buf();
+        test_case_path.push("../../client-go/testcases.json");
+        let tests = fs::read_to_string(test_case_path).unwrap();
+        let test_cases: Vec<TempCredsTestCase> = serde_json::from_str(&tests).unwrap();
+
+        for tc in &test_cases {
+            test_cred(&tc);
+        }
     }
 }
