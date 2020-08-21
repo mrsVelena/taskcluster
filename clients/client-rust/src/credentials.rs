@@ -63,9 +63,9 @@ fn gen_temp_access_token(perm_access_token: &str, seed: &str) -> String {
 }
 
 fn collect_scopes<R: FromIterator<String>>(
-    scopes: Option<impl IntoIterator<Item = impl AsRef<str>>>,
+    scopes: impl IntoIterator<Item = impl AsRef<str>>,
 ) -> Option<R> {
-    scopes.map(|scopes| scopes.into_iter().map(|s| s.as_ref().to_string()).collect())
+    Some(scopes.into_iter().map(|s| s.as_ref().to_string()).collect())
 }
 
 impl Credentials {
@@ -100,20 +100,41 @@ impl Credentials {
         })
     }
 
-    /// Create a new Credentials object with the given scopes. The scopes parameter, when not None,
-    /// must be a collection in which items implements AsRef<str> (&str and String are such types).
+    /// Create a new Credentials object without associated scopes.
     ///
     /// Examples:
-    ///     use taskcluster::Credentials;
-    ///     let _ = Credentials::new("my_client_id", "my_access_token", Some(&["scope1", "scope2", "scope3"]));
     ///
-    ///     use taskcluster::Credentials;
-    ///     let scopes: Vec<_> = vec!["scope1", "scope2", "scope3"].into_iter().collect();
-    ///     let _ = Credentials::new("my_client_id", "my_access_token", Some(scopes));
-    pub fn new(
+    /// ```
+    /// use taskcluster::Credentials;
+    /// let _ = Credentials::new("my_client_id", "my_access_token");
+    /// ```
+    pub fn new(client_id: &str, access_token: &str) -> Credentials {
+        Credentials {
+            client_id: String::from(client_id),
+            access_token: String::from(access_token),
+            certificate: None,
+            scopes: None,
+        }
+    }
+
+    /// Create a new Credentials object with the given scopes. The scopes parameter must be a collection
+    /// in which items implements AsRef<str> (&str and String are such types).
+    ///
+    /// Examples:
+    /// ```
+    /// use taskcluster::Credentials;
+    /// let _ = Credentials::new_with_scopes("my_client_id", "my_access_token", &["scope1", "scope2", "scope3"]);
+    /// ```
+    ///
+    /// ```
+    /// use taskcluster::Credentials;
+    /// let scopes: Vec<_> = vec!["scope1", "scope2", "scope3"].into_iter().collect();
+    /// let _ = Credentials::new_with_scopes("my_client_id", "my_access_token", scopes);
+    /// ```
+    pub fn new_with_scopes(
         client_id: &str,
         access_token: &str,
-        scopes: Option<impl IntoIterator<Item = impl AsRef<str>>>,
+        scopes: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> Credentials {
         Credentials {
             client_id: String::from(client_id),
@@ -140,7 +161,7 @@ impl Credentials {
         &self,
         temp_client_id: &str,
         duration: Duration,
-        scopes: Option<impl IntoIterator<Item = impl AsRef<str>>>,
+        scopes: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> Result<Credentials, Error> {
         if duration > Duration::from_secs(3600) * 24 * 31 {
             return Err(err_msg("Duration must be at most 31 days"));
@@ -197,7 +218,7 @@ impl Credentials {
     pub fn create_temp_creds(
         &self,
         duration: Duration,
-        scopes: Option<impl IntoIterator<Item = impl AsRef<str>>>,
+        scopes: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> Result<Credentials, Error> {
         self.create_named_temp_creds("", duration, scopes)
     }
@@ -235,10 +256,28 @@ impl Certificate {
 mod tests {
     use super::*;
     use chrono;
+    use lazy_static::lazy_static;
     use serde::{Deserialize, Serialize};
     use std::fs;
     use std::path;
+    use std::sync::{LockResult, Mutex, MutexGuard};
     use std::time;
+
+    // environment is global to the process, so we need to ensure that only one test uses
+    // it at a time.
+    lazy_static! {
+        static ref ENV_LOCK: Mutex<()> = Mutex::new(());
+    }
+
+    fn clear_env() -> LockResult<MutexGuard<'static, ()>> {
+        let guard = ENV_LOCK.lock();
+        for (key, _) in env::vars() {
+            if key.starts_with("TASKCLUSTER_") {
+                env::remove_var(key);
+            }
+        }
+        guard
+    }
 
     #[derive(Debug, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -262,7 +301,7 @@ mod tests {
             .create_named_temp_creds(
                 &tc.temp_creds_name,
                 time::Duration::from_secs(3600),
-                Some(tc.temp_creds_scopes.clone()),
+                tc.temp_creds_scopes.clone(),
             )
             .unwrap();
 
@@ -286,5 +325,56 @@ mod tests {
         for tc in &test_cases {
             test_cred(&tc);
         }
+    }
+
+    #[test]
+    fn test_new_with_scopes() {
+        let creds = Credentials::new_with_scopes("a-client", "a-token", vec!["scope1", "scope2"]);
+        assert_eq!(creds.client_id, "a-client");
+        assert_eq!(creds.access_token, "a-token");
+        assert_eq!(creds.certificate, None);
+        assert_eq!(creds.scopes, Some(vec!["scope1".into(), "scope2".into()]));
+    }
+
+    #[test]
+    fn test_new() {
+        let creds = Credentials::new("a-client", "a-token");
+        assert_eq!(creds.client_id, "a-client");
+        assert_eq!(creds.access_token, "a-token");
+        assert_eq!(creds.certificate, None);
+        assert_eq!(creds.scopes, None);
+    }
+
+    #[test]
+    fn test_from_env() {
+        let _guard = clear_env();
+        env::set_var("TASKCLUSTER_CLIENT_ID", "a-client");
+        env::set_var("TASKCLUSTER_ACCESS_TOKEN", "a-token");
+        let creds = Credentials::from_env().unwrap();
+        assert_eq!(creds.client_id, "a-client");
+        assert_eq!(creds.access_token, "a-token");
+        assert_eq!(creds.certificate, None);
+        assert_eq!(creds.scopes, None);
+    }
+
+    #[test]
+    fn test_from_env_missing() {
+        let _guard = clear_env();
+        env::set_var("TASKCLUSTER_CLIENT_ID", "a-client");
+        // (no access token)
+        assert!(Credentials::from_env().is_err());
+    }
+
+    #[test]
+    fn test_from_env_cert() {
+        let _guard = clear_env();
+        env::set_var("TASKCLUSTER_CLIENT_ID", "a-client");
+        env::set_var("TASKCLUSTER_ACCESS_TOKEN", "a-token");
+        env::set_var("TASKCLUSTER_CERTIFICATE", "cert");
+        let creds = Credentials::from_env().unwrap();
+        assert_eq!(creds.client_id, "a-client");
+        assert_eq!(creds.access_token, "a-token");
+        assert_eq!(creds.certificate, Some("cert".into()));
+        assert_eq!(creds.scopes, None);
     }
 }
