@@ -221,16 +221,20 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mockito::{mock, server_url, Matcher};
+    use httptest::{matchers::*, responders::*, Expectation, Server};
     use serde_json::json;
     use tokio;
 
     #[tokio::test]
     async fn test_simple_request() -> Result<(), Error> {
-        let _mock = mock("GET", "/queue/v1/ping").with_status(200).create();
-        let server = server_url();
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(request::method_path("GET", "/queue/v1/ping"))
+                .respond_with(status_code(200)),
+        );
+        let root_url = format!("http://{}", server.addr());
 
-        let client = Client::new(&server, "queue", "v1", None)?;
+        let client = Client::new(&root_url, "queue", "v1", None)?;
         let resp = client.request("GET", "ping", NO_QUERY, NO_BODY).await?;
         assert!(resp.status().is_success());
         Ok(())
@@ -238,14 +242,18 @@ mod tests {
 
     #[tokio::test]
     async fn test_query() -> Result<(), Error> {
-        let _mock = mock("GET", "/queue/v1/test")
-            .match_query(Matcher::UrlEncoded("taskcluster".into(), "test".into()))
-            .match_query(Matcher::UrlEncoded("client".into(), "rust".into()))
-            .with_status(200)
-            .create();
-        let server = server_url();
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(all_of![
+                request::method_path("GET", "/queue/v1/test"),
+                request::query(url_decoded(contains(("taskcluster", "test")))),
+                request::query(url_decoded(contains(("client", "rust")))),
+            ])
+            .respond_with(status_code(200)),
+        );
+        let root_url = format!("http://{}", server.addr());
 
-        let client = Client::new(&server, "queue", "v1", None)?;
+        let client = Client::new(&root_url, "queue", "v1", None)?;
         let resp = client
             .request(
                 "GET",
@@ -262,13 +270,17 @@ mod tests {
     async fn test_body() -> Result<(), Error> {
         let body = json!({"hello": "world"});
 
-        let _mock = mock("POST", "/queue/v1/test")
-            .match_body(Matcher::Json(body.clone()))
-            .with_status(200)
-            .create();
-        let server = server_url();
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(all_of![
+                request::method_path("POST", "/queue/v1/test"),
+                request::body(json_decoded(eq(body.clone()))),
+            ])
+            .respond_with(status_code(200)),
+        );
+        let root_url = format!("http://{}", server.addr());
 
-        let client = Client::new(&server, "queue", "v1", None)?;
+        let client = Client::new(&root_url, "queue", "v1", None)?;
         let resp = client.request("POST", "test", NO_QUERY, Some(body)).await?;
         assert!(resp.status().is_success());
         Ok(())
