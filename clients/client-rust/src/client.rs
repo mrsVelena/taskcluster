@@ -6,16 +6,9 @@ use failure::{format_err, Error, ResultExt};
 use hawk;
 use reqwest;
 use reqwest::header::HeaderValue;
-use std::borrow::Borrow;
-use std::iter::IntoIterator;
+use serde_json::Value;
 use std::str::FromStr;
 use std::time::Duration;
-
-/// A shortcut for None to indicate no body is being supplied for a request.
-pub const NO_BODY: Option<&str> = None;
-
-/// A shortcut for None to indicate that no query is being supplied for a request
-pub const NO_QUERY: Option<Vec<(String, String)>> = None;
 
 /// Client is the entry point into all the functionality in this package. It
 /// contains authentication credentials, and a service endpoint, which are
@@ -26,7 +19,7 @@ pub struct Client {
     /// If None, then unauthenticated requests are made.
     pub credentials: Option<Credentials>,
     /// The root URL for the Taskcluster deployment
-    root_url: reqwest::Url,
+    base_url: reqwest::Url,
     /// Reqwest client
     client: reqwest::Client,
 }
@@ -44,7 +37,7 @@ impl Client {
     ) -> Result<Client, Error> {
         Ok(Client {
             credentials,
-            root_url: reqwest::Url::parse(root_url)
+            base_url: reqwest::Url::parse(root_url)
                 .context(root_url.to_owned())?
                 .join(&format!("/api/{}/{}/", service_name, version))
                 .context(format!("adding /api/{}/{}", service_name, version))?,
@@ -54,20 +47,13 @@ impl Client {
 
     /// request is the underlying method that makes a raw API request,
     /// performing any json marshaling/unmarshaling of requests/responses.
-    pub async fn request<'a, I, K, V, B>(
+    pub async fn request(
         &self,
         method: &str,
         path: &str,
-        query: Option<I>,
-        body: Option<B>,
-    ) -> Result<reqwest::Response, Error>
-    where
-        I: IntoIterator,
-        I::Item: Borrow<(K, V)>,
-        K: AsRef<str>,
-        V: AsRef<str>,
-        B: serde::Serialize,
-    {
+        query: Option<Vec<(&str, &str)>>,
+        body: Option<&Value>,
+    ) -> Result<reqwest::Response, Error> {
         let mut backoff = ExponentialBackoff::default();
         backoff.max_elapsed_time = Some(Duration::from_secs(5));
         backoff.reset();
@@ -133,27 +119,23 @@ impl Client {
         }
     }
 
-    fn build_request<'b, I, K, V, B>(
+    fn build_request(
         &self,
         method: &str,
         path: &str,
-        query: Option<I>,
-        body: Option<B>,
-    ) -> Result<reqwest::Request, Error>
-    where
-        I: IntoIterator,
-        I::Item: Borrow<(K, V)>,
-        K: AsRef<str>,
-        V: AsRef<str>,
-        B: serde::Serialize,
-    {
-        let mut url = self.root_url.join(path).context(path.to_owned())?;
+        query: Option<Vec<(&str, &str)>>,
+        body: Option<&Value>,
+    ) -> Result<reqwest::Request, Error> {
+        if path.starts_with("/") {
+            panic!("path must not start with `/`");
+        }
+        let mut url = self.base_url.join(path)?;
 
         if let Some(q) = query {
             url.query_pairs_mut().extend_pairs(q);
         }
 
-        let meth = reqwest::Method::from_str(method).context(method.to_owned())?;
+        let meth = reqwest::Method::from_str(method)?;
 
         let req = self.client.request(meth, url);
 
@@ -162,10 +144,7 @@ impl Client {
             None => req,
         };
 
-        let req = req
-            .build()
-            .context(method.to_owned())
-            .context(path.to_owned())?;
+        let req = req.build()?;
 
         match self.credentials {
             Some(ref c) => {
@@ -193,7 +172,7 @@ impl Client {
 
         let port = req.url().port_or_known_default().ok_or(format_err!(
             "Unkown port for protocol {}",
-            self.root_url.scheme()
+            self.base_url.scheme()
         ))?;
 
         let signed_req_builder =
@@ -239,7 +218,7 @@ mod tests {
         let root_url = format!("http://{}", server.addr());
 
         let client = Client::new(&root_url, "queue", "v1", None)?;
-        let resp = client.request("GET", "ping", NO_QUERY, NO_BODY).await?;
+        let resp = client.request("GET", "ping", None, None).await?;
         assert!(resp.status().is_success());
         Ok(())
     }
@@ -301,7 +280,7 @@ mod tests {
         let root_url = format!("http://{}", server.addr());
 
         let client = Client::new(&root_url, "queue", "v1", Some(creds))?;
-        let resp = client.request("GET", "ping", NO_QUERY, NO_BODY).await?;
+        let resp = client.request("GET", "ping", None, None).await?;
         assert!(resp.status().is_success());
         Ok(())
     }
@@ -324,8 +303,8 @@ mod tests {
             .request(
                 "GET",
                 "test",
-                Some(&[("taskcluster", "test"), ("client", "rust")]),
-                NO_BODY,
+                Some(vec![("taskcluster", "test"), ("client", "rust")]),
+                None,
             )
             .await?;
         assert!(resp.status().is_success());
@@ -347,7 +326,7 @@ mod tests {
         let root_url = format!("http://{}", server.addr());
 
         let client = Client::new(&root_url, "queue", "v1", None)?;
-        let resp = client.request("POST", "test", NO_QUERY, Some(body)).await?;
+        let resp = client.request("POST", "test", None, Some(&body)).await?;
         assert!(resp.status().is_success());
         Ok(())
     }
