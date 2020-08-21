@@ -46,8 +46,8 @@ impl Client {
             credentials,
             root_url: reqwest::Url::parse(root_url)
                 .context(root_url.to_owned())?
-                .join(&format!("/{}/{}/", service_name, version))
-                .context(format!("{} {}", service_name, version))?,
+                .join(&format!("/api/{}/{}/", service_name, version))
+                .context(format!("adding /api/{}/{}", service_name, version))?,
             client: reqwest::Client::new(),
         })
     }
@@ -233,7 +233,7 @@ mod tests {
     async fn test_simple_request() -> Result<(), Error> {
         let server = Server::run();
         server.expect(
-            Expectation::matching(request::method_path("GET", "/queue/v1/ping"))
+            Expectation::matching(request::method_path("GET", "/api/queue/v1/ping"))
                 .respond_with(status_code(200)),
         );
         let root_url = format!("http://{}", server.addr());
@@ -293,7 +293,7 @@ mod tests {
         let server = Server::run();
         server.expect(
             Expectation::matching(all_of![
-                request::method_path("GET", "/queue/v1/ping"),
+                request::method_path("GET", "/api/queue/v1/ping"),
                 signed_with(creds.clone(), server.addr()),
             ])
             .respond_with(status_code(200)),
@@ -311,7 +311,7 @@ mod tests {
         let server = Server::run();
         server.expect(
             Expectation::matching(all_of![
-                request::method_path("GET", "/queue/v1/test"),
+                request::method_path("GET", "/api/queue/v1/test"),
                 request::query(url_decoded(contains(("taskcluster", "test")))),
                 request::query(url_decoded(contains(("client", "rust")))),
             ])
@@ -339,7 +339,7 @@ mod tests {
         let server = Server::run();
         server.expect(
             Expectation::matching(all_of![
-                request::method_path("POST", "/queue/v1/test"),
+                request::method_path("POST", "/api/queue/v1/test"),
                 request::body(json_decoded(eq(body.clone()))),
             ])
             .respond_with(status_code(200)),
