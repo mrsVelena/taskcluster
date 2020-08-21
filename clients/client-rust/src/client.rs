@@ -22,11 +22,12 @@ pub const NO_QUERY: Option<Vec<(String, String)>> = None;
 /// required for all HTTP operations.
 #[derive(Debug, Clone)]
 pub struct Client {
-    /// The credentials associated with this client. If authenticated request is made if None
+    /// The credentials associated with this client and used for requests.
+    /// If None, then unauthenticated requests are made.
     pub credentials: Option<Credentials>,
-    /// The request URL
-    url: reqwest::Url,
-    /// Request client
+    /// The root URL for the Taskcluster deployment
+    root_url: reqwest::Url,
+    /// Reqwest client
     client: reqwest::Client,
 }
 
@@ -43,7 +44,7 @@ impl Client {
     ) -> Result<Client, Error> {
         Ok(Client {
             credentials,
-            url: reqwest::Url::parse(root_url)
+            root_url: reqwest::Url::parse(root_url)
                 .context(root_url.to_owned())?
                 .join(&format!("/{}/{}/", service_name, version))
                 .context(format!("{} {}", service_name, version))?,
@@ -146,7 +147,7 @@ impl Client {
         V: AsRef<str>,
         B: serde::Serialize,
     {
-        let mut url = self.url.join(path).context(path.to_owned())?;
+        let mut url = self.root_url.join(path).context(path.to_owned())?;
 
         if let Some(q) = query {
             url.query_pairs_mut().extend_pairs(q);
@@ -192,7 +193,7 @@ impl Client {
 
         let port = req.url().port_or_known_default().ok_or(format_err!(
             "Unkown port for protocol {}",
-            self.url.scheme()
+            self.root_url.scheme()
         ))?;
 
         let signed_req_builder =
@@ -221,8 +222,11 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use http::header::AUTHORIZATION;
     use httptest::{matchers::*, responders::*, Expectation, Server};
     use serde_json::json;
+    use std::fmt;
+    use std::net::SocketAddr;
     use tokio;
 
     #[tokio::test]
@@ -235,6 +239,68 @@ mod tests {
         let root_url = format!("http://{}", server.addr());
 
         let client = Client::new(&root_url, "queue", "v1", None)?;
+        let resp = client.request("GET", "ping", NO_QUERY, NO_BODY).await?;
+        assert!(resp.status().is_success());
+        Ok(())
+    }
+
+    /// An httptest matcher that will check Hawk authentication with the given cedentials.
+    pub fn signed_with(creds: Credentials, addr: SocketAddr) -> SignedWith {
+        SignedWith(creds, addr)
+    }
+
+    #[derive(Debug)]
+    pub struct SignedWith(Credentials, SocketAddr);
+
+    impl<B> Matcher<http::Request<B>> for SignedWith {
+        fn matches(&mut self, input: &http::Request<B>, _ctx: &mut ExecutionContext) -> bool {
+            let auth_header = input.headers().get(AUTHORIZATION).unwrap();
+            let auth_header = auth_header.to_str().unwrap();
+            if !auth_header.starts_with("Hawk ") {
+                println!("Authorization header does not start with Hawk");
+                return false;
+            }
+            let auth_header: hawk::Header = auth_header[5..].parse().unwrap();
+
+            let host = format!("{}", self.1.ip());
+            let hawk_req = hawk::RequestBuilder::new(
+                input.method().as_str(),
+                &host,
+                self.1.port(),
+                input.uri().path(),
+            )
+            .request();
+
+            let key = hawk::Key::new(&self.0.access_token, hawk::SHA256).unwrap();
+
+            if !hawk_req.validate_header(&auth_header, &key, std::time::Duration::from_secs(1)) {
+                println!("Validation failed");
+                return false;
+            }
+
+            true
+        }
+
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            <Self as fmt::Debug>::fmt(self, f)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_simple_request_with_perm_creds() -> Result<(), Error> {
+        let creds = Credentials::new("clientId", "accessToken");
+
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(all_of![
+                request::method_path("GET", "/queue/v1/ping"),
+                signed_with(creds.clone(), server.addr()),
+            ])
+            .respond_with(status_code(200)),
+        );
+        let root_url = format!("http://{}", server.addr());
+
+        let client = Client::new(&root_url, "queue", "v1", Some(creds))?;
         let resp = client.request("GET", "ping", NO_QUERY, NO_BODY).await?;
         assert!(resp.status().is_success());
         Ok(())
