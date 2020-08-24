@@ -25,6 +25,18 @@ async fn test_auth_ping() -> Fallible<()> {
     Ok(())
 }
 
+/// Test that a 404 is treated as an error
+#[tokio::test]
+async fn test_no_such_client() -> Fallible<()> {
+    if let Some(root_url) = get_root_url() {
+        let auth = Auth::new(&root_url, None)?;
+        let res = auth.client("no/such/client/exists").await;
+        // TODO: verify that this is a 404
+        assert!(res.is_err());
+    }
+    Ok(())
+}
+
 /// Test a call with a query
 #[tokio::test]
 async fn test_auth_list_clients_paginated() -> Fallible<()> {

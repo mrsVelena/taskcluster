@@ -82,7 +82,7 @@ impl Client {
             Ok(resp)
         } else {
             Err(format_err!(
-                "Error executing request\nmethod: {}\nurl: {}\nstatus: {}({})\nresponse: \"{}\"",
+                "Error executing request I\nmethod: {}\nurl: {}\nstatus: {}({})\nresponse: \"{}\"",
                 method,
                 &url,
                 status.canonical_reason().unwrap_or("Unknown error"),
@@ -105,7 +105,7 @@ impl Client {
         let status = resp.status();
         if status.is_server_error() {
             Err(format_err!(
-                "Error executing request\nmethod: {}\nrequest\nURL: {}\nstatus: {}({})\nresponse: \"{}\"",
+                "Error executing request II\nmethod: {}\nrequest\nURL: {}\nstatus: {}({})\nresponse: \"{}\"",
                 method,
                 url,
                 status.canonical_reason().unwrap_or("Unknown error"),
