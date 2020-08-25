@@ -580,7 +580,7 @@ module.exports = {
         }
       ],
       "serviceName": "auth",
-      "title": "Authentication API"
+      "title": "Auth Service"
     },
     "referenceKind": "api"
   },
@@ -838,7 +838,7 @@ module.exports = {
         }
       ],
       "serviceName": "github",
-      "title": "Taskcluster GitHub API Documentation"
+      "title": "GitHub Service"
     },
     "referenceKind": "api"
   },
@@ -1220,7 +1220,7 @@ module.exports = {
         }
       ],
       "serviceName": "hooks",
-      "title": "Hooks API Documentation"
+      "title": "Hooks Service"
     },
     "referenceKind": "api"
   },
@@ -1397,7 +1397,7 @@ module.exports = {
         }
       ],
       "serviceName": "index",
-      "title": "Task Index API Documentation"
+      "title": "Index Service"
     },
     "referenceKind": "api"
   },
@@ -1679,7 +1679,7 @@ module.exports = {
         }
       ],
       "serviceName": "purge-cache",
-      "title": "Purge Cache API"
+      "title": "Purge Cache Service"
     },
     "referenceKind": "api"
   },
@@ -2414,7 +2414,7 @@ module.exports = {
         }
       ],
       "serviceName": "queue",
-      "title": "Queue API Documentation"
+      "title": "Queue Service"
     },
     "referenceKind": "api"
   },
@@ -3052,7 +3052,7 @@ module.exports = {
         }
       ],
       "serviceName": "secrets",
-      "title": "Taskcluster Secrets API Documentation"
+      "title": "Secrets Service"
     },
     "referenceKind": "api"
   },
@@ -3358,7 +3358,7 @@ module.exports = {
         }
       ],
       "serviceName": "worker-manager",
-      "title": "Taskcluster Worker Manager"
+      "title": "Worker Manager Service"
     },
     "referenceKind": "api"
   },

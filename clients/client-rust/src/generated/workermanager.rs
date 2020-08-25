@@ -6,6 +6,8 @@ use failure::Error;
 use serde_json::Value;
 use crate::util::urlencode;
 
+/// Worker Manager Service
+///
 /// This service manages workers, including provisioning for dynamic worker pools.
 pub struct WorkerManager (Client);
 

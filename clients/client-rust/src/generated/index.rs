@@ -6,9 +6,11 @@ use failure::Error;
 use serde_json::Value;
 use crate::util::urlencode;
 
+/// Index Service
+///
 /// The index service is responsible for indexing tasks. The service ensures that
 /// tasks can be located by user-defined names.
-/// 
+///
 /// As described in the service documentation, tasks are typically indexed via Pulse
 /// messages, so the most common use of API methods is to read from the index.
 pub struct Index (Client);

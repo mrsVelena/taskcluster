@@ -6,10 +6,12 @@ use failure::Error;
 use serde_json::Value;
 use crate::util::urlencode;
 
+/// Queue Service
+///
 /// The queue service is responsible for accepting tasks and track their state
 /// as they are executed by workers. In order ensure they are eventually
 /// resolved.
-/// 
+///
 /// This document describes the API end-points offered by the queue. These 
 /// end-points targets the following audience:
 ///  * Schedulers, who create tasks to be executed,

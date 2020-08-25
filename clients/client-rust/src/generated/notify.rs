@@ -6,6 +6,8 @@ use failure::Error;
 use serde_json::Value;
 use crate::util::urlencode;
 
+/// Notification Service
+///
 /// The notification service listens for tasks with associated notifications
 /// and handles requests to send emails and post pulse messages.
 pub struct Notify (Client);

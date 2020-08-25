@@ -6,8 +6,10 @@ use failure::Error;
 use serde_json::Value;
 use crate::util::urlencode;
 
+/// Hooks Service
+///
 /// The hooks service provides a mechanism for creating tasks in response to events.
-/// 
+///
 pub struct Hooks (Client);
 
 #[allow(non_snake_case)]

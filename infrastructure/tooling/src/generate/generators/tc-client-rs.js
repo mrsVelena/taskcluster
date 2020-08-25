@@ -132,7 +132,12 @@ const generateServiceClient = (className, reference) => {
       .join('\n'));
   }
 
-  const description = reference.description.split('\n').map(l => `/// ${l}`).join('\n');
+  let description = reference.description.split('\n');
+  if (reference.title) {
+    description.unshift('');
+    description.unshift(`${reference.title}`);
+  }
+  description = description.map(l => `///${l.length ? ` ${l}` : ''}`).join('\n');
 
   return MOD_TEMPLATE({
     serviceName: reference.serviceName,

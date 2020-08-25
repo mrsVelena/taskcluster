@@ -6,12 +6,14 @@ use failure::Error;
 use serde_json::Value;
 use crate::util::urlencode;
 
+/// GitHub Service
+///
 /// The github service is responsible for creating tasks in response
 /// to GitHub events, and posting results to the GitHub UI.
-/// 
+///
 /// This document describes the API end-point for consuming GitHub
 /// web hooks, as well as some useful consumer APIs.
-/// 
+///
 /// When Github forbids an action, this service returns an HTTP 403
 /// with code ForbiddenByGithub.
 pub struct Github (Client);

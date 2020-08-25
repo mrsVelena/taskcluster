@@ -6,13 +6,15 @@ use failure::Error;
 use serde_json::Value;
 use crate::util::urlencode;
 
+/// Auth Service
+///
 /// Authentication related API end-points for Taskcluster and related
 /// services. These API end-points are of interest if you wish to:
 ///   * Authorize a request signed with Taskcluster credentials,
 ///   * Manage clients and roles,
 ///   * Inspect or audit clients and roles,
 ///   * Gain access to various services guarded by this API.
-/// 
+///
 pub struct Auth (Client);
 
 #[allow(non_snake_case)]

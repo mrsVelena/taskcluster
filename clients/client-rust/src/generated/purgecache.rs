@@ -6,8 +6,10 @@ use failure::Error;
 use serde_json::Value;
 use crate::util::urlencode;
 
+/// Purge Cache Service
+///
 /// The purge-cache service is responsible for tracking cache-purge requests.
-/// 
+///
 /// User create purge requests for specific caches on specific workers, and
 /// these requests are timestamped.  Workers consult the service before
 /// starting a new task, and purge any caches older than the timestamp.
