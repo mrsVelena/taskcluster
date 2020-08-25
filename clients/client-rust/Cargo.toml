@@ -1,6 +1,6 @@
 [package]
 name = "taskcluster"
-version = "0.1.0"
+version = "37.0.0"
 authors = ["Wander Lairson Costa <wander.lairson@gmail.com>"]
 edition = "2018"
 
