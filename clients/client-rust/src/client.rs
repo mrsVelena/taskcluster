@@ -45,8 +45,13 @@ impl Client {
         })
     }
 
-    /// request is the underlying method that makes a raw API request,
-    /// performing any json marshaling/unmarshaling of requests/responses.
+    /// Make a request to the service for which this client was configured.
+    /// While the per-service methods are generally more convenient, this
+    /// method can be used to call a path on the service directly.
+    ///
+    /// The `path` argument is relative to the
+    /// `<rootUrl>/api/<serviceName>/<apiVersion>`
+    /// path for the configured service, and must not begin with `/`.
     pub async fn request(
         &self,
         method: &str,

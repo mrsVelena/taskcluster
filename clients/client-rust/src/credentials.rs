@@ -70,9 +70,10 @@ fn collect_scopes<R: FromIterator<String>>(
 
 impl Credentials {
     /// Create a new Credentials object from environment variables:
-    /// TASKCLUSTER_CLIENT_ID
-    /// TASKCLUSTER_ACCESS_TOKEN
-    /// TASKCLUSTER_CERTIFICATE (optional)
+    ///
+    /// * `TASKCLUSTER_CLIENT_ID`
+    /// * `TASKCLUSTER_ACCESS_TOKEN`
+    /// * `TASKCLUSTER_CERTIFICATE` (optional)
     pub fn from_env() -> Result<Credentials, Error> {
         let client_id = env::var("TASKCLUSTER_CLIENT_ID").context("TASKCLUSTER_CLIENT_ID")?;
         let access_token =
