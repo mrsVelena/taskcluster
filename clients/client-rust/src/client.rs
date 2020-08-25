@@ -1,5 +1,4 @@
 use crate::Credentials;
-use async_std::task;
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use failure::{format_err, Error, ResultExt};
@@ -9,6 +8,7 @@ use reqwest::header::HeaderValue;
 use serde_json::Value;
 use std::str::FromStr;
 use std::time::Duration;
+use tokio;
 
 /// Client is the entry point into all the functionality in this package. It
 /// contains authentication credentials, and a service endpoint, which are
@@ -72,7 +72,7 @@ impl Client {
             }
 
             match backoff.next_backoff() {
-                Some(duration) => task::sleep(duration).await,
+                Some(duration) => tokio::time::delay_for(duration).await,
                 None => break result,
             }
         }?;
