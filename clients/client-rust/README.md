@@ -1,6 +1,6 @@
 # Taskcluster Client for Rust
 
-This library is a complete interface to Taskcluster in Python.  It provides
+This library is a complete interface to Taskcluster in Rust.  It provides
 asynchronous interfaces for all Taskcluster API methods, as well as a few
 utility functions.
 
