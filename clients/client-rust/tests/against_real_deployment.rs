@@ -19,7 +19,7 @@ fn get_root_url() -> Option<String> {
 #[tokio::test]
 async fn test_auth_ping() -> Fallible<()> {
     if let Some(root_url) = get_root_url() {
-        let auth = Auth::new(&root_url, None)?;
+        let auth = Auth::new(&root_url, None, None)?;
         auth.ping().await?;
     }
     Ok(())
@@ -28,8 +28,16 @@ async fn test_auth_ping() -> Fallible<()> {
 /// Test that a 404 is treated as an error
 #[tokio::test]
 async fn test_no_such_client() -> Fallible<()> {
+    // XXX NOTES:
+    //  - other clients treat 4xx as error, so we should, too
+    //    - 2xx all treated the same?
+    //    - what about 3xx?
+    //  - return reqwest::Error if possible so status is easy for callers to inspect
+    //    - otherwise use a custom error type that can return this
+    //      - but this is hard because reqwest::Error isn't Clone so Failure doesn't like it
+    //      - ..so maybe a custom error that parses reqwest::Error in that case
     if let Some(root_url) = get_root_url() {
-        let auth = Auth::new(&root_url, None)?;
+        let auth = Auth::new(&root_url, None, None)?;
         let res = auth.client("no/such/client/exists").await;
         // TODO: verify that this is a 404
         assert!(res.is_err());
@@ -41,7 +49,7 @@ async fn test_no_such_client() -> Fallible<()> {
 #[tokio::test]
 async fn test_auth_list_clients_paginated() -> Fallible<()> {
     if let Some(root_url) = get_root_url() {
-        let auth = Auth::new(&root_url, None)?;
+        let auth = Auth::new(&root_url, None, None)?;
         let mut continuation_token: Option<String> = None;
         let limit = Some("2");
         let mut saw_root = false;
@@ -73,7 +81,7 @@ async fn test_auth_list_clients_paginated() -> Fallible<()> {
 #[tokio::test]
 async fn test_auth_expand_scopes() -> Fallible<()> {
     if let Some(root_url) = get_root_url() {
-        let auth = Auth::new(&root_url, None)?;
+        let auth = Auth::new(&root_url, None, None)?;
         let mut saw_scope = false;
 
         let res = auth

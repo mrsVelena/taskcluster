@@ -34,7 +34,7 @@ Here is a simple setup and use of an un-authenticated client:
 # );
 # let root_url = format!("http://{}", server.addr());
 use taskcluster::Auth;
-let auth = Auth::new(&root_url, None)?;
+let auth = Auth::new(&root_url, None, None)?;
 let resp = auth.client("static/taskcluster/root").await?;
 assert_eq!(resp, json!({"clientId": "static/taskcluster/root"}));
 Ok(())
@@ -64,7 +64,7 @@ use std::env;
 use taskcluster::{Queue, Credentials};
 let creds = Credentials::from_env()?;
 let root_url = env::var("TASKCLUSTER_ROOT_URL").unwrap();
-let client = Queue::new(&root_url, Some(creds))?;
+let client = Queue::new(&root_url, Some(creds), None)?;
 let res = client.cancelTask("G08bnnBuR6yDhDLJkJ6KiA").await?;
 println!("{}", res.get("status").unwrap());
 Ok(())
@@ -131,7 +131,7 @@ For example, the following lists all Auth clients:
 # );
 # let root_url = format!("http://{}", server.addr());
 use taskcluster::{Auth, Credentials};
-let auth = Auth::new(&root_url, None)?;
+let auth = Auth::new(&root_url, None, None)?;
 let mut continuation_token: Option<String> = None;
 let limit = Some("10");
 
@@ -174,7 +174,7 @@ use std::env;
 use taskcluster::{Client, Credentials};
 let creds = Credentials::from_env()?;
 let root_url = env::var("TASKCLUSTER_ROOT_URL").unwrap();
-let client = Client::new(&root_url, "queue", "v1", Some(creds))?;
+let client = Client::new(&root_url, "queue", "v1", Some(creds), None)?;
 let resp = client.request("POST", "task/G08bnnBuR6yDhDLJkJ6KiA/cancel", None, None).await?;
 assert!(resp.status().is_success());
 Ok(())
@@ -196,6 +196,6 @@ mod credentials;
 mod generated;
 mod util;
 
-pub use client::Client;
+pub use client::{Client, Retry};
 pub use credentials::Credentials;
 pub use generated::*;

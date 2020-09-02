@@ -16,32 +16,60 @@ use tokio;
 #[derive(Debug, Clone)]
 pub struct Client {
     /// The credentials associated with this client and used for requests.
-    /// If None, then unauthenticated requests are made.
+    /// If None, then unauthenticated requests are made.  These may be modified
+    /// and will take effect on the next request made with this client.
     pub credentials: Option<Credentials>,
-    /// The root URL for the Taskcluster deployment
+    /// Retry information.  Note that some of this information cannot be changed
+    /// after construction.
+    retry: Retry,
+    /// The base URL for requests to the selected service / api version
     base_url: reqwest::Url,
     /// Reqwest client
     client: reqwest::Client,
 }
 
+/// Configuration for a client's automatic retrying
+#[derive(Debug, Clone)]
+pub struct Retry {
+    /// Number of retries for transient errors
+    pub retries: u32,
+
+    /// Maximum interval between retries (used in tests to make retries quick)
+    pub max_interval: Duration,
+
+    /// Timeout for each HTTP request
+    pub timeout: Duration,
+}
+
 impl Client {
-    /// Instatiate a new client for a taskcluster service.
-    /// The root_url is the taskcluster deployment root url,
-    /// service_name is the name of the service and version
-    /// is the service version
+    /// Instatiate a new client for a taskcluster service.  The `root_url` is the Taskcluster
+    /// deployment root url, `service_name` is the name of the service, and `api_version` is the
+    /// service's api version.
     pub fn new<'b>(
         root_url: &str,
         service_name: &str,
-        version: &str,
+        api_version: &str,
         credentials: Option<Credentials>,
+        retry: Option<Retry>,
     ) -> Result<Client, Error> {
+        let retry = retry.unwrap_or(Retry {
+            retries: 5,
+            max_interval: Duration::from_millis(backoff::default::MAX_INTERVAL_MILLIS),
+            timeout: Duration::from_secs(30),
+        });
+        let timeout = retry.timeout;
+
         Ok(Client {
             credentials,
+            retry,
             base_url: reqwest::Url::parse(root_url)
                 .context(root_url.to_owned())?
-                .join(&format!("/api/{}/{}/", service_name, version))
-                .context(format!("adding /api/{}/{}", service_name, version))?,
-            client: reqwest::Client::new(),
+                .join(&format!("/api/{}/{}/", service_name, api_version))
+                .context(format!("adding /api/{}/{}", service_name, api_version))?,
+            client: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(timeout)
+                .build()?,
         })
     }
 
@@ -60,67 +88,52 @@ impl Client {
         body: Option<&Value>,
     ) -> Result<reqwest::Response, Error> {
         let mut backoff = ExponentialBackoff::default();
-        backoff.max_elapsed_time = Some(Duration::from_secs(5));
+        backoff.max_elapsed_time = None; // we count retries instead
+        backoff.max_interval = self.retry.max_interval;
         backoff.reset();
 
         let req = self.build_request(method, path, query, body)?;
         let url = req.url().as_str();
 
-        let resp = loop {
+        let mut retries = self.retry.retries;
+        loop {
             let req = req
                 .try_clone()
-                .ok_or(format_err!("Cannot clone the request {}", url))?;
+                .ok_or_else(|| format_err!("Cannot clone the request {}", url))?;
 
-            let result = self.exec_request(url, method, req).await;
-            if result.is_ok() {
-                break result;
+            let retry_for;
+            match self.client.execute(req).await {
+                // From the request docs for Client::execute:
+                // > This method fails if there was an error while sending request, redirect loop
+                // > was detected or redirect limit was exhausted.
+                // All cases where there's a successful HTTP response are Ok(..).
+                Err(e) => {
+                    retry_for = e;
+                }
+
+                // Retry for server errors
+                Ok(resp) if resp.status().is_server_error() => {
+                    retry_for = resp.error_for_status().err().unwrap();
+                }
+
+                // Anything else is OK.
+                Ok(resp) => {
+                    return Ok(resp);
+                }
+            };
+
+            // if we got here, we are going to retry, or return the error if we are done
+            // retrying.
+
+            retries -= 1;
+            if retries <= 0 {
+                return Err(retry_for.into());
             }
 
             match backoff.next_backoff() {
                 Some(duration) => tokio::time::delay_for(duration).await,
-                None => break result,
+                None => return Err(retry_for.into()),
             }
-        }?;
-
-        let status = resp.status();
-        if status.is_success() {
-            Ok(resp)
-        } else {
-            Err(format_err!(
-                "Error executing request I\nmethod: {}\nurl: {}\nstatus: {}({})\nresponse: \"{}\"",
-                method,
-                &url,
-                status.canonical_reason().unwrap_or("Unknown error"),
-                status.as_str(),
-                resp.text()
-                    .await
-                    .unwrap_or_else(|err| format!("Cannot retrieve response body: {}", err)),
-            ))
-        }
-    }
-
-    async fn exec_request(
-        &self,
-        url: &str,
-        method: &str,
-        req: reqwest::Request,
-    ) -> Result<reqwest::Response, Error> {
-        let resp = self.client.execute(req).await.context(url.to_owned())?;
-
-        let status = resp.status();
-        if status.is_server_error() {
-            Err(format_err!(
-                "Error executing request II\nmethod: {}\nrequest\nURL: {}\nstatus: {}({})\nresponse: \"{}\"",
-                method,
-                url,
-                status.canonical_reason().unwrap_or("Unknown error"),
-                status.as_str(),
-                resp.text()
-                    .await
-                    .unwrap_or_else(|err| format!("Cannot retrieve response body: {}", err)),
-            ))
-        } else {
-            Ok(resp)
         }
     }
 
@@ -222,7 +235,7 @@ mod tests {
         );
         let root_url = format!("http://{}", server.addr());
 
-        let client = Client::new(&root_url, "queue", "v1", None)?;
+        let client = Client::new(&root_url, "queue", "v1", None, None)?;
         let resp = client.request("GET", "ping", None, None).await?;
         assert!(resp.status().is_success());
         Ok(())
@@ -284,7 +297,7 @@ mod tests {
         );
         let root_url = format!("http://{}", server.addr());
 
-        let client = Client::new(&root_url, "queue", "v1", Some(creds))?;
+        let client = Client::new(&root_url, "queue", "v1", Some(creds), None)?;
         let resp = client.request("GET", "ping", None, None).await?;
         assert!(resp.status().is_success());
         Ok(())
@@ -303,7 +316,7 @@ mod tests {
         );
         let root_url = format!("http://{}", server.addr());
 
-        let client = Client::new(&root_url, "queue", "v1", None)?;
+        let client = Client::new(&root_url, "queue", "v1", None, None)?;
         let resp = client
             .request(
                 "GET",
@@ -330,9 +343,67 @@ mod tests {
         );
         let root_url = format!("http://{}", server.addr());
 
-        let client = Client::new(&root_url, "queue", "v1", None)?;
+        let client = Client::new(&root_url, "queue", "v1", None, None)?;
         let resp = client.request("POST", "test", None, Some(&body)).await?;
         assert!(resp.status().is_success());
+        Ok(())
+    }
+
+    const RETRY_FAST: Retry = Retry {
+        retries: 6,
+        max_interval: Duration::from_millis(1),
+        timeout: Duration::from_secs(1),
+    };
+
+    #[tokio::test]
+    async fn test_500_retry() -> Result<(), Error> {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(request::method_path("GET", "/api/queue/v1/test"))
+                .times(6)
+                .respond_with(status_code(500)),
+        );
+        let root_url = format!("http://{}", server.addr());
+        let client = Client::new(&root_url, "queue", "v1", None, Some(RETRY_FAST.clone()))?;
+
+        let result = client.request("GET", "test", None, None).await;
+        println!("{:?}", result);
+        assert!(result.is_err());
+        let reqw_err: reqwest::Error = result.err().unwrap().downcast()?;
+        assert_eq!(reqw_err.status().unwrap(), 500);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_400_no_retry() -> Result<(), Error> {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(request::method_path("GET", "/api/queue/v1/test"))
+                .times(1)
+                .respond_with(status_code(400)),
+        );
+        let root_url = format!("http://{}", server.addr());
+        let client = Client::new(&root_url, "queue", "v1", None, Some(RETRY_FAST.clone()))?;
+
+        let resp = client.request("GET", "test", None, None).await?;
+        assert_eq!(resp.status(), 400);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_303_no_follow() -> Result<(), Error> {
+        let server = Server::run();
+        server.expect(
+            Expectation::matching(request::method_path("GET", "/api/queue/v1/test"))
+                .times(1)
+                // should not follow this redirect..
+                .respond_with(status_code(303).insert_header("location", "http://httpstat.us/404")),
+        );
+        let root_url = format!("http://{}", server.addr());
+        let client = Client::new(&root_url, "queue", "v1", None, Some(RETRY_FAST.clone()))?;
+
+        let resp = client.request("GET", "test", None, None).await?;
+        assert_eq!(resp.status(), 303);
         Ok(())
     }
 }
